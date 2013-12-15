@@ -1,36 +1,71 @@
+(
 /*
 README
 ======
 
 This is the main patch for "moire", by Eduardo Moguillansky
 
-1) Go down to SETUP and modify as indicated to fit your setup
-2) There are two code-blocks to evaluate to get the patch started
-   You evaluate a code-block by placing your cursor at the _____
-   in each "EVAL THIS" sign, and pressing Cmd-ENTER.
-   Eval each of the code-blocks
-3) After evaluating the second
+INSTRUCTIONS
+============
 
+JackPilot
+=========
 
-===================================================
-=                                                 =
-=                     SETUP                       =
-=                                                 =
-===================================================
+* Open JackPilot
+* In JackPilot, configure the Input and Output devices to match the
+  default ones selected in Audio Midi Setup
+* Samplerate should be 48000
+* Virtual Input Channels: 12/12
+* Start Jack by pressing "Start"
 
-*/
+Audio Midi Setup
+================
 
-(
+* Select the audio interface "JackRouter"
+
+Supercollider
+=============
+
+* Go down to CONFIGURATION and modify to fit your setup, if necessary
+* Boot the server, by pressing CMD-B
+* Press CMD-Enter to start the patch
+* Two things should happen: if not already starten, Reaper should
+  start and load the preprocessing patch
+  A Supercollider window will appear, where you can further configure
+  the patch
+* To stop the sound, press CMD-. (period) or simply close the window
+
+Reaper
+======
+
+* In Reaper, make sure that the audio interface is "JackRouter"
+  For this, go to REAPER/Preferences.../Audio/Device and select "JackRouter"
+
+JackPilot
+=========
+
+* Back in Jack, load studio setup by going to menu "Load Studio Setup"
+* In the basepath ("waveguide") you will find a file "moire.jks". Thats the setup
+  The setup is simple:
+  SYSTEM --> REAPER --> SUPERCOLLIDER --> SYSTEM
+  So, Reaper acts as a preprocessor for the microphones, applying EQ and
+  compression
+
 ///////////////////////////////////////////////////////////////////////
 //                     EVAL THIS: ________________
 ///////////////////////////////////////////////////////////////////////
+*/
 
-/// ---------------- CONFIGURATION ----------------
-
-// Base path of the project. Change it when moving it to another place.
-// This should reflect the path where this file was saved
 fork {
-    ~basepath = "~/proj/moire/waveguide/SC".absolutePath;   // <------------------- CHANGE THIS WHEN MOVING TO ANOTHER PLACE!!
+    var synthargs, fbackset, fbackcurve, pedalcurve, ccbind, checkNil, synth1, synth2;
+
+    /// ---------------- CONFIGURATION ----------------
+
+    // Base path of the project. Change it when moving it to another place.
+    // This should reflect the path where this file was saved
+
+    ~basepath = "~/proj/moire/waveguide";   // <------------------- CHANGE THIS WHEN MOVING TO ANOTHER PLACE!!
+    ~reaperpatch = "moire-preprocessing.RPP";
 
     // CHANNELS begin with 1
     ~input_channels = (
@@ -41,23 +76,33 @@ fork {
         \wg2_B3 : 7,
         \wg2_B4 : 8,
         \busA   : 1,
-        \busB   : 2
+        \busB   : 2,
+        \through : nil         // audio from this channel will be sent through to the main outs (wg1_listen, wg2_listen)
     );
 
     ~output_channels = (
         \wg1_speakerL : 3,
         \wg1_speakerR : 4,
-    \wg2_speakerL : 5,
+        \wg2_speakerL : 5,
         \wg2_speakerR : 6,
         \wg1_listen   : 1,
-        \wg2_listen   : 2
+        \wg2_listen   : 2,
     );
 
-    ~gui_oscport = 8801;
+    ~midi_in = "Pro40";
+    ~midi_pedal1 = 7;
+    ~midi_pedal2 = nil;
 
-    // ------------------ END CONFIGURATION --------------------
+    /* ---------------------------------------------------------
+                         END CONFIGURATION
+    ---------------------------------------------------------- */
+
+    // Open REAPER
+    "open -a Reaper %/REAPER/%".format(~basepath, ~reaperpatch).unixCmd;
+
     ~input_channels.keysValuesChange {|k, v| v-1};
     ~output_channels.keysValuesChange {|k, v| v-1};
+    ~basepath = ~basepath.absolutePath;
 
     ~readsettings = {|path|
         var out;
@@ -96,9 +141,9 @@ fork {
         };
     };
 
-    ~setpaths = [~basepath +/+ "CONFIG" +/+ "setA.txt", ~basepath +/+ "CONFIG" +/+ "setB.txt"];
+    ~setpaths = [~basepath +/+ "SC/CONFIG" +/+ "setA.txt", ~basepath +/+ "SC/CONFIG" +/+ "setB.txt"];
     ~b3_fftsize = 2048;
-    ~b3_bufpaths = [~basepath +/+ "ASSETS" +/+ "A4174cm.wav", ~basepath +/+ "ASSETS" +/+ "A4174cm.wav"];
+    ~b3_bufpaths = [~basepath +/+ "SC/ASSETS" +/+ "A4174cm.wav", ~basepath +/+ "SC/ASSETS" +/+ "A4174cm.wav"];
     if( ~b3_bufs.notNil ) {
         ~b3_bufs.do {|bufref|
             if(bufref.notNil && bufref.value.notNil) {
@@ -111,23 +156,9 @@ fork {
     ~b3_bufs = ~b3_bufpaths.collect {|path| PartConv.getBuffer(path, ~b3_fftsize) };
 
     Elib.midi_init;
-};
-)
 
-(
-///////////////////////////////////////////////////////////////////////
-//                     EVAL THIS: ________________
-///////////////////////////////////////////////////////////////////////
-fork {
-    var synthargs, fbackset, fbackcurve, pedalcurve, ccbind, checkNil, bcfbind, synth1, synth2;
-    //var guiaddr = NetAddr("localhost", 31415);
-    var guiaddr   = NetAddr("localhost", ~gui_oscport);
-
-    Elib.midi_init;
-
-    if( ~conf.isNil ) {
-        "\n>>>>>>>>>>> evaluate SETUP first! <<<<<<<<<<<<<\n".throw;
-    };
+    s.sync;  // ---------------------------------------------------------------
+    2.wait;
 
     if ( ~b3_bufs[0].value.isNil ) {
 
@@ -317,9 +348,9 @@ fork {
     ~synths = [synth1, synth2];
     ~nodenames = [\wg1, \wg2];
 
-    ~bcf = MIDIClient.getSource("BCF");
-    if (~bcf.isNil ) {
-        "BCF2000 not found!!".postln;
+    ~midisource = MIDIClient.getSource(~midi_in);
+    if (~midisource.isNil ) {
+        "MIDI source not found!!".postln;
     };
 
     1.5.wait;
@@ -331,49 +362,10 @@ fork {
             var used_settings = nodesettings.select{|v, k| nodeargs.indexOf(k).notNil};
             var nodename = ~nodenames[index];
             node.setn(*used_settings.asArgsArray);
-            used_settings.do {|v, k|
-                guiaddr.sendMsg("/%/%".format(nodename, k), v);
-            };
         };
     };
 
     s.sync;  // ..............................................................
-
-    bcfbind = {|nodename, kind, which, param, func|
-        var label, node, chan, storedict;
-        var oscpath = nodename++"/"++param;
-
-        if( nodename == \wg1 ) {
-            node = synth1;
-            chan = 0;
-            storedict = ~sets[0];
-        } {
-            node = synth2;
-            chan = 1;
-            storedict = ~sets[1];
-        };
-
-        if( node.notNil) {
-            switch(kind,
-                \fader, {
-                    label = "% - % F%".format(nodename, param, which);
-                    MIDIFunc.ccbind((cc:BCF.fader_cc(which), src:~bcf, chan:chan), node, param, spec:func, post:(path:"/print", port:31415, label:label), store:storedict);
-                },
-                \knob, {
-                    label = "% - % K%/%".format(nodename, param, which[0], which[1]);
-                    MIDIFunc.ccbind((cc:BCF.knob_cc(which[0], which[1]), src:~bcf, chan:chan), node, param, spec:func, post:(path:"/print", port:31415, label:label), store:storedict);
-                },
-                \cc, {
-                    label = "% - % CC%".format(nodename, param, which);
-                    MIDIFunc.ccbind((cc:which, src:~bcf, chan:chan), node, param, spec:func, post:(path:"/print", port:31415, label:label), store:storedict);
-                }
-            );
-        } {
-            "node %s is nil, skipping binding".format(nodename).postln;
-        };
-
-
-    };
 
     // ------------- GUI -----------------
     defer {
@@ -477,46 +469,16 @@ fork {
     };
 
 
-    // ------------- BINDINGS -----------------------------------------
+    // ------------- MIDI -------------
 
-    ~nodenames.do {|nodename|
-        "Setting synth %".format(nodename).postln;
-        bcfbind.(nodename, \cc, 65, \fbackrel, _/127);
-
-        /*
-
-        bcfbind.(nodename, \fader, 1, \ffwet);
-        bcfbind.(nodename, \fader, 2, \mica2feed);
-        bcfbind.(nodename, \fader, 3, \mica2listen, _/127*2);
-        bcfbind.(nodename, \fader, 4, \b3convgain);
-        bcfbind.(nodename, \fader, 5, \b3convwet);
-        bcfbind.(nodename, \fader, 6, \b3revwet);
-        bcfbind.(nodename, \fader, 7, \b3wet);
-        bcfbind.(nodename, \fader, 8, \b3listen);
-
-        bcfbind.(nodename, \knob, [1, 2], \locut, _.linexp(0, 127, 20, 3000));
-        bcfbind.(nodename, \knob, [2, 2], \hicut, _.linexp(0, 127, 400, 16000));
-        bcfbind.(nodename, \knob, [3, 2], \fbacklo,  _/127*2);
-        bcfbind.(nodename, \knob, [4, 2], \fbackeq,  _/127*2);
-        bcfbind.(nodename, \knob, [5, 2], \fbackhi,  _/127*2);
-        bcfbind.(nodename, \knob, [6, 2], \fbackrel, _/127);
-
-
-        bcfbind.(nodename, \knob, [7, 2], \speakergainL, _/0);
-        bcfbind.(nodename, \knob, [8, 2], \speakergainR);
-
-        bcfbind.(nodename, \knob, [3, 3], \revwet);
-        bcfbind.(nodename, \knob, [7, 3], \shiftscale, _/127*24);
-        bcfbind.(nodename, \knob, [8, 3], \shiftwet);
-
-        bcfbind.(nodename, \knob, [1, 4], \mastergain);
-        bcfbind.(nodename, \knob, [2, 4], \sourcelisten);
-        bcfbind.(nodename, \knob, [3, 4], \fdngain);
-        bcfbind.(nodename, \knob, [4, 4], \fdnlisten);
-        bcfbind.(nodename, \knob, [5, 4], \b3follow);
-        */
+    if( ~midi_pedal1.notNil ) {
+        ~synths[0].ccbind(~midi_pedal1, \fbackrel, _/127, post:false, store:~sets[0]);
+    };
+    if( ~midi_pedal2.notNil ) {
+        ~synths[1].ccbind(~midi_pedal2, \fbackrel, _/127, post:false, store:~sets[1]);
     };
 
+    // receive info from synths via OSC
     "setting up receivers".postln;
     OSCFunc({|msg|
         var id = msg[2];
@@ -566,13 +528,13 @@ fork {
 
     ">>>>>>>>>>>>>>>>>".postln;
 
-    ~live = {
-        SoundIn.ar(10) !> Out.ar(1, _);
-    }.play;
+    if( ~input_channels[\through].notNil ) {
+        ~audiothrough = {
+            SoundIn.ar(~input_channels[\through]) !> Out.ar(~output_channels[\wg1_listen], _);
+        }.play;
+    };
 
 }
-
 )
 
-// ______________________________________________________________
-~dumpsettings.(~setA)
+// FINE
