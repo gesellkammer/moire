@@ -1,0 +1,8 @@
+( 'micgain': 1.0, 'sourcelisten': 0.062992125984252, 'fbackeq': 0.97637795275591, 'a3mul': 0.039370078740157, 
+  'speakergainL': 1.0, 'mastergain': 1.0, 'hicut': 16000, 'b3listen': 0.031496062992126, 'b3feed': 0.0078740157480315, 
+  'fdngain': 0.0, 'fbacklo': 0.59842519685039, 'mica2feed': 0.37007874015748, 'locut': 20, 'distmix': 0.0, 
+  'fdnlisten': 0.79527559055118, 'b3convgain': 0.0, 'fbackrel': 0.97637795275591, 'testnoise': 3.1622813008772e-05, 'micb3conv_wet': 0.25196850393701, 
+  'balratio': 0.0, 'b3revwet': 0.031496062992126, 'distbal': 0.0, 'shiftscale': 14.551181102362, 'micb3feed': 0.37007874015748, 
+  'distmax': 0.50393700787402, 'phonegain1': 1, 'speakergainR': 1.0, 'mica2listen': 0.48031496062992, 'fback': 1.3543307086614, 
+  'b3convwet': 0.0, 'revwet': 0.0, 'sourcelisten_gate': 0.0, 'fbackhi': 1.3543307086614, 'micb3listen': 0.59842519685039, 
+  'balwet': 0.0, 'pshiftwet': 0.62992125984252 )

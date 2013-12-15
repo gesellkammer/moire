@@ -1,0 +1,6 @@
+(disconnect "system:capture_(.*)" "scsynth:in\1")
+
+(connect "system:capture_(.*)" "REAPER:in\1")
+(connect "REAPER:out(.*)" "scsynth:in\1")
+(connect "scsynth:out(.*)" "system:playback_\1")
+
