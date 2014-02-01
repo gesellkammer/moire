@@ -1,0 +1,11 @@
+TROUBLESHOOTING
+===============
+
+Checklist:
+
+- the Supercollider Patch:
+    * In CONFIGURATION/~enabled_waveguides, check that the waveguides (\wg1, \wg2) are enabled
+- Saffire MixControl
+    * 
+
+

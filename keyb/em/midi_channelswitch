@@ -1,0 +1,45 @@
+/*
+MIDI channel switch
+
+* Map the CC Switch to any controller
+* When above the Threshold, everything is sent to channel B. 
+* Below the threshold, to channel A
+
+*/
+
+
+desc:Switch MIDI Channel Channel via Parameter
+
+slider1:1<0,127,1> CC Switch
+slider2:10<0,127,1> Threshold (less than this, channel A, more than this, channel B)
+slider3:0<0,15,1> Channel A
+slider4:1<0,15,1> Channel B
+slider5:0<0,1,1> Resulting Channel
+
+in_pin: none
+out_pin: none
+      
+@init
+channel = slider3;
+
+@slider
+which = slider1 < slider2;
+channel = which ? (slider3):(slider4);
+slider5 = 1 - which;
+  
+@block
+ 
+while( midirecv(offset,msg1,msg23) ? (
+
+    // status = msg1&$xF0; //Get status byte
+      
+    // CC_number = msg23&$xff; //Get incoming CC number
+    // CC_value = (msg23/256)&$xff; //Get incoming CC value
+
+
+    status_without_channel = (msg1 & $xF0) >> 4 << 4;
+    
+    msg1_out = status_without_channel + channel;    
+    midisend(offset, msg1_out, msg23); //Pass on original message unchanged   
+  );
+); 

@@ -1,0 +1,29 @@
+desc:MIDI sostenuto pedal emulation
+
+slider1:0<0,127,1>Hold Pedal
+slider2:1<0,127,1>Threshold
+
+@init
+lastchan=0;
+ts=0;
+
+@slider
+pressed = (slider1 / slider2);
+pressed = (pressed > 1) ? 1 : pressed;
+pressed = pressed*127;
+sendit = 1;
+
+@block
+while (
+  midirecv(ts,msg,msg23) ? (
+    midisend(ts, msg, msg23);
+    // lastchan = (msg&$xe0);
+    lastchan = 0;
+  );
+  1;
+  (sendit) ? (
+    midisend(ts,176+lastchan, 64+256*pressed);
+    sendit = 0;
+  );
+);
+  

@@ -1,0 +1,2 @@
+( 'sensitive_keyboard': true, 'note_release_ms': 50, 'sawduty': 1, 'volpedal': 127, 
+  'note_attack_ms': 10, 'notemaxgain_db': -6, 'mastervolume': 1 )

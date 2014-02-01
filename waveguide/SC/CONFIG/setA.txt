@@ -1,6 +1,6 @@
-( 'fbackrel': 0.13385826771654, 'b3revwet': 0.18897637795276, 'sourcelisten': 0.0, 'mica2feed': 0.10909090909091, 
-  'mastergain': 1.0, 'b3convgain': 0.31818181818182, 'locut': 37.0, 'b3listen': 1.0, 'mica2liste': 0.53636363636364, 
-  'fbackhi': 1.3454545454545, 'fbacklo': 0.30909090909091, 'mica2listen': 0.96062992125984, 'b3follow': 0.1, 'speakergainR': 1.0, 
-  'ffwet': 0.20909090909091, 'b3convwet': 0.12727272727273, 'fbackeq': 0.90909090909091, 'revwet': 0.0, 'fdnlisten': 0.1, 
-  'hicut': 16000, 'speakergainL': 1.0, 'b3wet': 0.062992125984252, 'fdngain': 0.51181102362205, 'shiftwet': 0.21818181818182, 
-  'shiftscale': 9.5454545454545 )
+( 'b3follow': 0.1, 'fbackeq': 0.90909090909091, 'b3revwet': 0.21818181818182, 'shiftwet': 0.22727272727273, 
+  'speakergainL': 1.0, 'mastergain': 1.0, 'ffwet': 0.17272727272727, 'hicut': 16000, 'speakergainR': 1.0, 
+  'fdngain': 0.0, 'b3wet': 0.062992125984252, 'sourcelisten': 0.0, 'mica2feed': 0.10909090909091, 'shiftscale': 9.5454545454545, 
+  'b3convwet': 0.25454545454545, 'locut': 37.0, 'fdnlisten': 0.0, 'b3listen': 0.63636363636364, 'mica2listen': 0.96062992125984, 
+  'revwet': 0.0, 'b3convgain': 0.22727272727273, 'mute_m2': 0, 'fbackrel': 0.5, 'fbackhi': 1.3454545454545, 
+  'mute': 0, 'fbacklo': 0.34545454545455, 'mica2liste': 0.77272727272727 )

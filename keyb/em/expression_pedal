@@ -1,0 +1,43 @@
+// * Plug an expression pedal
+// * Arm a track for rec., with monitoring
+// * Put this as a plugin
+// * Move the slider slightly and then go to Param/Parameter Modulation
+// * Audio control signal
+// * Adjust the values in this order
+//     * first set the input of the audio device so that the whole range 
+//       of the pedal movement is above 60dB
+//     * if needed, first create a track and adjust the gain there, then
+//       when it is between the right volume, use this
+//     * Then adjust Attack to around 30 ms, release to 100ms
+//     * Adjust Min volume and Max volume
+//     * Set Direction to Positive
+// * Then you can send the midi data to any midi device
+// NB: if you want to use it in another track, 
+
+desc: expression pedal ADC to MIDI
+slider1:0<0,127,1>MIDI value
+slider2:96<0, 127, 1>CC 
+slider3:0<0,15,1>Channel
+
+@slider
+slider1 != lastvalue ? (
+  lastvalue = slider1;
+  msg1 = 176 + slider3;
+  changed = 1;
+) : (
+  changed=0;
+);
+
+@init
+lastvalue = 0;
+@block
+changed ? (
+  msg23 = slider2 + (slider1 * 256); 
+  midisend(0, msg1, msg23);
+  changed=0;
+);
+
+@sample
+spl0=spl0;
+spl1=spl1;
+

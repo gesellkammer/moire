@@ -1,0 +1,49 @@
+desc:MIDI sostenuto pedal emulation
+
+slider1:36<0,127,1>SAW/SINUS Threshold
+slider2:81<0,127,1>SAW/SINUS Send CC
+slider3:100<0, 1200, 1>PITCHBEND (cents)
+slider4:442<413,451,1>A4 (Hz)
+
+slider8:0<0,127,1>SAW/SINUS Status <<<<<<
+slider9:0<-1200, 1200, 1>PITCHBEND Result (cents) <<<<<<
+
+@init
+sawsinus=0;
+pw=0;
+mw_last = 0;
+
+@slider
+m0 = 12*log(slider4/440)+69;
+offset_cents = (m0 - 69)*100;
+
+@block
+while (
+  midirecv(ts,msg1,msg23) ? (
+    m = msg1 & 240;
+    v1 = msg23&127;
+    (m == $x90) ? (  // noteon?
+      debug=m;
+      new_sawsinus = (v1 < slider1)*127;
+      (new_sawsinus != sawsinus) ? (
+        sawsinus = new_sawsinus;
+        midisend(ts, 176, slider2+sawsinus*256);
+        slider8 = sawsinus;
+      );
+      midisend(ts, msg1, msg23);
+    ) : (
+      (m == 176 && v1 == 1) ? ( // is it MOD wheel?
+        v2 = msg23 >> 8;
+        pb = (v2-63.0);
+        pb = (pb < 0) ? pb/63 : pb/64;
+        
+        // midisend(ts, 224, );
+        slider9 = pb * slider3 + offset_cents;
+      ) : (
+        // no noteon or mod-wheel, just send it through
+        midisend(ts, msg1, msg23);
+      );
+    );
+  );
+);      
+      

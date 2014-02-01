@@ -1,0 +1,68 @@
+/*
+If the note pressed is A0, record its state in a global variable
+If it is C#1 and A0 is pressed, set channel to 1
+If it is D1 and A0 is pressed, set channel to 2
+*/
+
+
+desc:TODO
+
+slider5:1<0, 16, 1> MIDI Channel
+
+in_pin: none
+out_pin: none
+      
+@init
+a0state = 0;
+CH_A = 1;
+CH_B = 2;
+channel = CH_A;
+do_send = 1;
+
+@slider
+ 
+@block
+
+ while( 
+    midirecv(offset,msg1,msg23) ? (
+        
+        do_send = 1;
+        channel_changed = 0;
+        status_without_channel = (msg1 & $xF0) >> 4 << 4;
+        note = msg23 & 0xff;
+        vel = (msg23/256) & 0xff;
+        ( status_without_channel == 0x90 ) ? (
+            (note == 21) ? (
+                a0state = vel;
+                do_send = 0;
+            ) : (
+                (a0state) ? (
+                    (note == 25) ? (
+                        channel = CH_A; 
+                        channel_changed = 1;
+                    );
+                    (note == 26) ? (
+                        channel = CH_B;
+                        channel_changed = 1;
+                    );
+                    do_send = 0;
+                )
+            )
+            
+        );
+        ( status_without_channel == 0x80 ) && ( note == 21 ) ? ( 
+            a0state = 0;
+            do_send = 0;
+        );
+        ( do_send ) ? (
+            msg1_out = status_without_channel + channel;
+            midisend(offset, msg1_out, msg23);
+        );
+        ( channel_changed ) ? (
+            slider5 = channel;
+            sliderchange(slider5);
+        ); 
+    );
+    
+);
+

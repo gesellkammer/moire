@@ -1,0 +1,27 @@
+desc: square wave generator
+slider1:50<0,100,0.1>freq-small
+slider2:0<0,20000,1>freq-large
+slider3:1<0.0,1.0,0.001>amp
+slider4:50<0,20000,0.1>resulting-freq
+
+// as seen in:
+// http://musicweb.ucsd.edu/~tre/biquad.pdf
+
+@init
+frequency = slider1 + slider2;
+amp = slider3;
+pi2=2*$pi;
+pi2fs=pi2/srate;
+sp=0;
+vol = amp;
+
+@slider
+frequency = slider1 + slider2;
+amp = slider3;
+slider4 = frequency;
+ofs=frequency * pi2fs;
+vol=amp;
+
+@sample
+spl0=(((sp>=pi2?sp-=pi2:sp)+=ofs)<$pi?-vol:vol);
+spl1=spl0;

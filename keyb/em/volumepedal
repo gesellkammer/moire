@@ -1,0 +1,38 @@
+// This effect Copyright (C) 2004 and later Cockos Incorporated
+// License: GPL - http://www.gnu.org/licenses/gpl.html
+// Modified by Eduardo Moguillansky to act as a MIDI volume pedal
+desc: volume negative adjustment (simulate a volume pedal)
+slider1:1<0,1,0.01>Gain
+slider2:-120<-120,0,1>min value (dB)
+slider3:0<-120,0,1>max value (dB)
+slider4:3<0.2, 20, 0.1>curve
+slider5:0<-120,0,0.1>Result (dB)
+//slider5:0<-120, 0, 0.1>resulting gain (dB, read-only)
+@init
+log2 = log(2);
+
+@slider
+  adj1=slider1;
+  vol0=2 ^ (slider2/6); 
+  vol1=2 ^ (slider3/6);
+  curve=slider4;
+  dvol=vol1 - vol0;
+  res_vol = vol0 + (dvol * (adj1 ^ curve));
+  slider5 = 6 * log(res_vol) / log2;
+  doseek=1;
+@block
+doseek ? (
+  
+  dadj=(adj1-adj1_s)/samplesblock;
+  doseek = 0;
+  // doseek=0;
+):(
+  dadj=0;
+  adj1_s=adj1;
+);
+@sample
+adj=adj1_s ^ curve;
+vol=(adj) * (dvol) + vol0;
+spl0=spl0 * vol;
+spl1=spl1 * vol;
+adj1_s+=dadj;
