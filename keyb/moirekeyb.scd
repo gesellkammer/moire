@@ -8,10 +8,22 @@ Instructions
 2. Connect your MIDI keyboard
 3. Configure the CC values if necessary (see ~cc)
 4. Configure other values (see ~config)
-5. Press COMMAND-Enter to start
-6. After a few seconds a window will pop up
+5. Press COMMAND-B to to start DSP
+6. Press COMMAND-Enter to start the patch itself.
+7. A window will pop up
 
-To stop sound, press COMMAND-. (Command-Period) or close the window
+To stop sound, close the window.
+
+Troubleshooting
+===============
+
+Q: The MIDI Keyboard is not working
+A: It was probably connected after Supercollider was started.
+   Go to menu "Language/Reboot Interpreter"
+   Wait until you see "compile done" in the Post Window.
+   Press COMMAND-Enter to start.
+   At the Post Window you will see the MIDI devices detected (look for
+   "MIDI sources"
 
 */
 
@@ -29,23 +41,27 @@ To stop sound, press COMMAND-. (Command-Period) or close the window
     a4: 442,
     velocity_when_insensitive: 90,
     saw_threshold:  48,
-    pitchbend_cents: 50,
-    modwheel_cents: 100,
-    limiter_soft_thresh: -3,
     settings_filename: "moirekeyb-settings.txt"
 );
 
 
 // ------------------------ END CONFIGURATION -----------------------
+//
+//
+// ------------------  From here on, DO NOT TOUCH  ------------------
 
 ~defaults = (
-    'note_attack_ms':  10,
-    'note_release_ms': 50,
-    'volpedal': 127,       // 0-127
-    'mastervolume': 1,       // 0-1
-    'notemaxgain_db': -6,
-    'sensitive_keyboard': true,
-    'sawduty':1,
+    note_attack_ms:  10,
+    note_release_ms: 50,
+    volpedal: 127,       // 0-127
+    mastervolume: 1,       // 0-1
+    notemaxgain_db: -6,
+    sensitive_keyboard: true,
+    sawduty:1,
+    pitchbend_cents: 50,
+    modwheel_cents: 100,
+    comp_thresh: -3,
+    comp_ratio: 10,
 );
 
 ~getcwd = {
@@ -66,7 +82,7 @@ To stop sound, press COMMAND-. (Command-Period) or close the window
     ~env_fromxy.(xs, ys);
 };
 
-~compress = {|sig, thresh= -24, knee=8, ratio=2, gain= -3, autogain=1, attack=0.0, release=0.1|
+~compress2 = {|sig, thresh= -24, knee=8, ratio=2, gain= -3, autogain=1, attack=0.0, release=0.1|
     /*
     -- the softknee begins at thresh - knee
     -- gain has only meaning when autogain is on
@@ -86,17 +102,28 @@ To stop sound, press COMMAND-. (Command-Period) or close the window
     Compander.ar( sig, sig, thresh.dbamp, 1, slopeAbove, *times ) * gain2.dbamp;
 };
 
+~compress = {|sig, thresh= -24, ratio=2, attack=0.005, release=0.1|
+    Compander.ar(sig, sig, thresh.dbamp, slopeBelow:1, slopeAbove: (1/ratio),
+        clampTime:attack, relaxTime:release);
+};
+
 ~check_bad = { |sig|
     Select.ar(CheckBadValues.ar(sig, 0, 0), [sig, DC.ar(0), DC.ar(0), sig]);
 };
 
-~limiter = {|sig, soft_thresh= -3, hard_thresh= -0.1, knee=3, ratio=4, attack=0.0008, release=0.5, lookahead=0|
+~compressorlimiter = {|sig, comp_thresh= -3, limit_thresh= -0.1, ratio=10, attack=0.0008, release=0.5, lookahead=0.005|
     var look = max(lookahead, ControlDur.ir);
-    var compress = ~compress.(sig, soft_thresh, knee, ratio, attack:attack, release:release, autogain:0);
-    var limit = Limiter.ar(compress, hard_thresh.dbamp, look);
+    //var compress = ~compress.(sig, soft_thresh, knee, ratio, attack:attack, release:release, autogain:0);
+    var compress = ~compress.(sig, comp_thresh, ratio:ratio, attack:attack, release:release);
+    var limit = Limiter.ar(compress, limit_thresh.dbamp, look);
     limit = ~check_bad.(limit);
     limit;
 };
+
+~limiter2 = {|sig, hard_thresh= -0.1, lookahead=0.005|
+    Limiter.ar(sig, hard_thresh.dbamp, lookahead);
+};
+
 
 // -------------- PERSISTENCE ------------------
 
@@ -184,16 +211,31 @@ fork {
     var bend_offset = 0;
     var global_bend = 0;
     var notes = Array.fill(127, nil);
-    var pitchbend_amount = ~config.pitchbend_cents / 100;
-    var modwheel_amount = ~config.modwheel_cents / 100;
+    // var pitchbend_amount = ~config.pitchbend_cents / 100;
+    // var modwheel_amount = ~config.modwheel_cents / 100;
     var settings = ~settings;
     var bus, notegroup;
+    var pitchbend_display, volpedal_display;
 
-    s.options.numInputBusChannels = 0;
-    s.options.numOutputBusChannels = 2;
-    s.reboot;
+    if( s.serverRunning.not ) {
+        Server.killAll;
+        2.wait;
+        s.boot;
+    };
 
-    4.wait;
+	if( s.options.numInputBusChannels > 0 ) {
+		s.options.numInputBusChannels = 0;
+		s.options.numOutputBusChannels = 2;
+		s.reboot;
+		4.wait;
+	};
+
+    "--> Starting MIDI".postln;
+    MIDIClient.init;
+    MIDIClient.restart;
+    2.wait;
+    MIDIIn.connectAll;
+
 
     s.sync; // ------------------------------------------------------------------
 
@@ -225,87 +267,46 @@ fork {
     s.sync; // --------------------------------------------------
 
     postgroup = Group.after(~notegroup);
-    outsynth = {|inbus, outbus, volpedal=127, mastervolume=1|
-        var curve = ~bpflinear.(
-            0,  -90,
-            32, -32,
-            64, -6,
-            127, 0
-        );
-        var amp = (IEnvGen.kr(curve, volpedal).dbamp * mastervolume).clip(0, 1).lag(0.2);
-        var a0 = In.ar(bus) * amp;
-        var out = ~limiter.(a0, soft_thresh:~config.limiter_soft_thresh);
-        Out.ar([0, 1], out);  // L & R chan. are the same
-    }.play(postgroup, args:[inbus:bus, outbus:0, volpedal:settings.volpedal, mastervolume:settings.mastervolume]);
+    outsynth = Ref();
+
+    ~create_outsynth = {
+        var syn = {|inbus, outbus, volpedal=127, mastervolume=1, comp_thresh, comp_ratio|
+            var curve = ~bpflinear.(
+                0,  -90,
+                32, -32,
+                64, -6,
+                127, 0
+            );
+            var amp = (IEnvGen.kr(curve, volpedal).dbamp * mastervolume).clip(0, 1).lag(0.2);
+            var a0 = In.ar(bus) * amp;
+            var out = ~compressorlimiter.(a0, comp_thresh:comp_thresh, ratio:comp_ratio);
+            Out.ar([0, 1], out);  // L & R chan. are the same
+        }.play(postgroup, args:[
+            inbus:bus, outbus:0, volpedal:settings.volpedal, mastervolume:settings.mastervolume,
+            comp_thresh:settings.comp_thresh, comp_ratio:settings.comp_ratio
+        ]);
+        if( outsynth.value.notNil ) {
+            outsynth.value.free;
+        };
+        outsynth.value = syn;
+    };
+    ~create_outsynth.();
 
     s.sync; // --------------------------------------------------
 
-    MIDIClient.init;
-    MIDIIn.connectAll;
+    ~panic = {
+        notegroup.freeAll;
 
-    s.sync;
+        // ~create_outsynth.();
+        notes.fill(nil);
 
-    /***********************************
-                  MIDI
-    ************************************/
-
-    // volpedal
-    MIDIFunc.cc({|val, cc, chan|
-        outsynth.set(\volpedal, val);
-        settings.volpedal = val;
-    }, ~cc.volpedal);
-
-    // pitchwheel
-    MIDIFunc.bend({|val|
-        var bend = val.linlin(0, 16383, pitchbend_amount.neg, pitchbend_amount);
-        global_bend = bend;
-        notegroup.set(\bend, bend);
-    });
-
-    // modwheel
-    MIDIFunc.cc({|val, cc, chan|
-        var bend = val.linlin(0, 127, 0, modwheel_amount);
-        notegroup.set(\bend_offset, bend);
-        settings.bend_offset = bend;
-    }, ccNum: ~cc.modwheel);
-
-    // noteon & noteoff
-    MIDIFunc.noteOn({|vel, midinote|
-        var velocity = ~settings.sensitive_keyboard.if(vel, 90);
-        var note = Synth(\note, target:notegroup, args:
-            [
-                outbus:bus, midinote:midinote, velocity:velocity,
-                bend:global_bend, bend_offset:settings.bend_offset,
-                i_maxgain: ~settings.notemaxgain_db,
-                i_attack:  ~settings[\note_attack_ms]/1000, i_release:~settings[\note_release_ms]/1000,
-                sawduty: ~settings.sawduty
-        ]);
-        notes[midinote] = note;
-        // defer { ~scope.cycle = 44100/midinote.midicps; };
-    });
-
-    MIDIFunc.noteOff({|vel, midinote|
-        notes[midinote].set(\gate, 0);
-        notes[midinote] = nil;
-    });
-
-    // panic
-    if( ~cc.panic.notNil ) {
-        MIDIFunc.cc({|val|
-            notes.do {|syn|
-                if(syn.notNil) {
-                    syn.set(\gate, 0);
-                };
-            };
-            notes.fill(nil);
-        }, ccNum: ~cc.panic);
     };
 
     // --------------------- GUI -------------------------
     defer {
         var width = 500;
-        var height = 500;
-        var lineheight = 20;
+        var height = 680;
+        var lineheight = 18;
         var default_fontsize = 13;
         var win = Window.new(name:"moire", bounds:width@height).front;
         win.view.decorator = FlowLayout(win.bounds, 20@10, 10@10);
@@ -325,48 +326,145 @@ fork {
             };
 
         };
-        ~newslider = {|param, label, spec, defaultvalue, sendtonote=false|
+
+        win.view.keyDownAction = {|view, key|
+            if( key == $p ) { ~panic.() };
+        };
+
+        ~newslider = {|param, label, spec, defaultvalue, sendtonote=false, sendtooutsynth=false, func, round=0.01|
             var settings = ~settings;
             var value0 = settings[param] ? defaultvalue ? 0;
-            var func;
             value0 = if(value0.isNaN) {0} {value0};
-            func = {|slider|
-                var v = slider.value;
+            func = func ? {|slider|
+                var v = slider.value.round(round);
                 settings[param] = v;
-                if( sendtonote ) {
-                    notegroup.set(param, v);
-                };
+                case
+                { sendtonote } { notegroup.set(param, v) }
+                { sendtooutsynth } { outsynth.value.set(param, v) }
+                ;
             };
             EZSlider(win, (width*0.9)@lineheight, " % ".format(label), spec, labelWidth:(width*0.25), numberWidth:60, action:func, initVal:value0)
-            .round_(0.01)
+            .round_(round)
             .font_(Font("Helvetica", default_fontsize));
         };
-        ~newslider.(\note_attack_ms, "Attack", [0, 100], 10);
-        ~newslider.(\note_release_ms, "Release", [0, 500], 50);
-        ~newslider.(\sawduty, "Saw Duty", [0, 1], 0.01, sendtonote:true);
-        ~newslider.(\notemaxgain_db, "Note Volume (dB)", [-40, 0], ~settings.notemaxgain_db);
 
-        EZSlider(win,
-            (width*0.9)@lineheight, " % ".format("Master Volume (dB"), [-24, 0],
-            labelWidth:(width*0.25), numberWidth:60, initVal:settings.mastervolume.ampdb,
-            action: {|slider|
+        ~display = {|label, spec, value0, round=0.01|
+            var magn = 0.8;
+            EZSlider(win, (width*0.9)@(lineheight*magn), " % ".format(label), spec, labelWidth:(width*0.25), numberWidth:60, initVal:value0)
+            .round_(round)
+            .setColors(sliderBackground:Color.black, knobColor:Color.green, stringColor:Color.grey)
+            .font_(Font("Helvetica", default_fontsize*magn, bold:true));
+        };
+
+        ~newslider.(\note_attack_ms, "Attack", [0, 100], 10, round:1);
+        ~newslider.(\note_release_ms, "Release", [0, 300], 50, round:1);
+        ~newslider.(\sawduty, "Saw Duty", [0, 1], 0.01, sendtonote:true);
+        ~newslider.(\pitchbend_cents, "Pitchbend Cents", [0, 200], ~settings.pitchbend_cents, round:1);
+        ~newslider.(\modwheel_cents, "Modwheel Cents", [0, 200], ~settings.modwheel_cents, round:1);
+        ~newslider.(\comp_thresh, "Comp Thresh (dB)", [-24, 0], round:0.1, sendtooutsynth:true);
+        ~newslider.(\comp_ratio, "Comp Ratio", [1, 24], round:0.1, sendtooutsynth:true);
+
+        ~newslider.(\notemaxgain_db, "Note Volume (dB)", [-24, 0], ~settings.notemaxgain_db, round:0.1);
+        ~newslider.(\mastervolume, "Master Vol. (dB)", [-24, 0], ~settings.mastervolume.ampdb, round:0.1, func:
+            { |slider|
                 var amp = slider.value.dbamp;
                 settings.mastervolume = amp;
-                outsynth.set(\mastervolume, amp);
-            }
-        );
+                outsynth.value.set(\mastervolume, amp);
+        });
 
-        ToggleButton(win, "Keyboard Sensitivity", minWidth:width*0.9, minHeight:40, init:~settings.sensitive_keyboard,
-            onFunction:{|but, value|
-                ~settings.sensitive_keyboard = value;
-            }
-        ).font_(Font("Helvetica", default_fontsize));
+
+        Button(win, width*0.9@40)
+        .states_([
+            ["Keyboard NOT sensitive", Color.black, Color.red],
+            ["Keyboard sensitive", Color.white, Color.green]
+        ])
+        .value_(~settings.sensitive_keyboard.asInteger)
+        .action_({|butt|
+            ~settings.sensitive_keyboard = butt.value.booleanValue
+        });
+
+        pitchbend_display = ~display.("Pitchbend (Cents)", [-200, 200], 0, round:1);
+        volpedal_display = ~display.("Volpedal", [0, 127], ~settings.volpedal, round:1);
 
         ~scope = Stethoscope(s, numChannels:1, index:0, view:win.view);
-        //~levels = ServerMeter(s);
         ~levels = ServerMeterView(s, win, 0@0, 2, 2);
-        //~levels.view.keyDownAction = nil;
 
+        Button(win, width*0.9@40)
+        .states_([
+            ["PANIC (Press P)", Color.white, Color.red]
+        ])
+        .value_(~settings.sensitive_keyboard.asInteger)
+        .mouseDownAction_({
+            ~panic.();
+        });
+    };
+
+    0.1.wait;  // we need to wait for the defer
+
+    /***********************************
+                  MIDI
+    ************************************/
+
+    // volpedal
+    MIDIFunc.cc({|val, cc, chan|
+        outsynth.value.set(\volpedal, val);
+        settings.volpedal = val;
+        defer {
+            volpedal_display.value = val;
+        }
+    }, ~cc.volpedal);
+
+    // pitchwheel
+    MIDIFunc.bend({|val|
+        var pitchbend_amount = settings.pitchbend_cents/100;
+        var bend = val.linlin(0, 16383, pitchbend_amount.neg, pitchbend_amount);
+        global_bend = bend;
+        notegroup.set(\bend, bend);
+        defer {
+            pitchbend_display.value = bend * 100;
+        };
+    });
+
+    // modwheel
+    MIDIFunc.cc({|val, cc, chan|
+        var modwheel_amount = settings.modwheel_cents / 100;
+        var bend = val.linlin(0, 127, 0, modwheel_amount);
+        notegroup.set(\bend_offset, bend);
+        settings.bend_offset = bend;
+    }, ccNum: ~cc.modwheel);
+
+    // noteon & noteoff
+    MIDIFunc.noteOn({|vel, midinote|
+        var velocity, note;
+        if( vel > 0 ) {
+            velocity = ~settings.sensitive_keyboard.if(vel, 90);
+            note = Synth(\note, target:notegroup, args:
+                [
+                    outbus:bus, midinote:midinote, velocity:velocity,
+                    bend:global_bend, bend_offset:settings.bend_offset,
+                    i_maxgain: ~settings.notemaxgain_db,
+                    i_attack:  ~settings[\note_attack_ms]/1000, i_release:~settings[\note_release_ms]/1000,
+                    sawduty: ~settings.sawduty
+            ]);
+            notes[midinote] = note;
+        } {
+            // this should not happen!
+            "noteon with vel. 0!".postln;
+            notes[midinote].set(\gate, 0);
+            notes[midinote] = nil;
+        };
+    });
+
+    MIDIFunc.noteOff({|vel, midinote|
+        notes[midinote].set(\gate, 0);
+        notes[midinote] = nil;
+    });
+
+    // panic
+    if( ~cc.panic.notNil ) {
+        MIDIFunc.cc({|val|
+            ~panic.();
+        }, ccNum: ~cc.panic);
     };
 }
 )
